@@ -1,18 +1,30 @@
 # import importlib.util
 import inspect
 import os
+import sys
 from dataclasses import dataclass
+from enum import Enum
 from importlib import import_module
 
 # from importlib.machinery import ModuleSpec
 from pathlib import Path
 from types import ModuleType
-from typing import Callable, Iterator, List, NamedTuple
+from typing import (
+    Callable,
+    Iterable,
+    Iterator,
+    List,
+    NamedTuple,
+    Optional,
+    TextIO,
+    Union,
+)
 
 import typer
 from loguru import logger
 from tinytag import TinyTag
 from tinytag.tinytag import TinyTagException
+logger.remove()
 
 DEFAULT_CHECKS_MODULE_NAME = "libcheck.default_checks"
 
@@ -115,6 +127,15 @@ def get_checks() -> List[Check]:
 main = typer.Typer(add_completion=False)
 
 
+class LogLevel(str, Enum):
+    TRACE = "trace"
+    DEBUG = "debug"
+    INFO = "info"
+    WARNING = "warning"
+    ERROR = "error"
+    CRITICAL = "critical"
+
+
 # Pass context_settings to command instead of Typer
 # because of https://github.com/tiangolo/typer/issues/208
 @main.command(context_settings={"help_option_names": ["-h", "--help"]})
@@ -132,7 +153,26 @@ def libcheck(
     #     help="Path to a Python module containing libcheck functions. Repeatable."
     #     " If not specified, default checks are used.",
     # ),
+    log_level: Optional[LogLevel] = typer.Option(
+        None,
+        "--log-level",
+        "-l",
+        case_sensitive=False,
+        help="Log messages of at least this importance.",
+    ),
+    log_file: Optional[Path] = typer.Option(
+        None,
+        "--log-file",
+        "-L",
+        dir_okay=False,
+        writable=True,
+        help="Log to this file instead of stderr.",
+    ),
 ):
+    if log_level:
+        sink: Union[Path, TextIO] = log_file or sys.stderr
+        logger.add(sink, level=log_level.upper())
+
     # checks: List[Check] = get_checks(check_modules)
     checks: List[Check] = get_checks()
 
