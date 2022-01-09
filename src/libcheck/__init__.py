@@ -1,12 +1,13 @@
-import importlib.util
+# import importlib.util
 import inspect
 import os
 from dataclasses import dataclass
 from importlib import import_module
-from importlib.machinery import ModuleSpec
+
+# from importlib.machinery import ModuleSpec
 from pathlib import Path
 from types import ModuleType
-from typing import Callable, Iterator, List, NamedTuple, Optional
+from typing import Callable, Iterator, List, NamedTuple
 
 import typer
 from loguru import logger
@@ -60,37 +61,39 @@ class Check(NamedTuple):
 #     origin: str
 
 
-def get_checks(check_module_paths: Optional[List[Path]]) -> List[Check]:
+# def get_checks(check_module_paths: Optional[List[Path]]) -> List[Check]:
+def get_checks() -> List[Check]:
     # TODO: skip duplicate modules
     modules: List[ModuleType] = []
-    if check_module_paths:
-        # user-specified
-        for i, path in enumerate(check_module_paths):
-            spec: Optional[ModuleSpec] = importlib.util.spec_from_file_location(
-                f"libcheck_checks_module{i}", path
-            )
-            if spec is None:
-                # TODO: log
-                continue
-            module: ModuleType = importlib.util.module_from_spec(spec)
-            if spec.loader is None:
-                # TODO: log
-                continue
-            spec.loader.exec_module(module)
-            modules.append(module)
-    else:
-        # default
-        try:
-            modules.append(import_module(DEFAULT_CHECKS_MODULE_NAME))
-        except ModuleNotFoundError:
-            logger.critical("TODO")
-            typer.Exit(1)
+    # if check_module_paths:
+    #     # user-specified
+    #     for i, path in enumerate(check_module_paths):
+    #         spec: Optional[ModuleSpec] = importlib.util.spec_from_file_location(
+    #             f"libcheck_checks_module{i}", path
+    #         )
+    #         if spec is None:
+    #             # TODO: log
+    #             continue
+    #         module: ModuleType = importlib.util.module_from_spec(spec)
+    #         if spec.loader is None:
+    #             # TODO: log
+    #             continue
+    #         spec.loader.exec_module(module)
+    #         modules.append(module)
+    # else:
+    # default
+    try:
+        modules.append(import_module(DEFAULT_CHECKS_MODULE_NAME))
+    except ModuleNotFoundError:
+        logger.critical("TODO")
+        typer.Exit(1)
 
     checks: List[Check] = []
     for module in modules:
-        module_checks: List[Check] = []
+        # module_checks: List[Check] = []
         for member in inspect.getmembers(module, is_libcheck_function):
-            module_checks.append(Check(member[0], member[1]))
+            # module_checks.append(Check(member[0], member[1]))
+            checks.append(Check(member[0], member[1]))
 
         # TODO: if feasible, log functions found per-module
         # sort out module_name crap
@@ -119,18 +122,19 @@ def libcheck(
     lib_root: Path = typer.Argument(
         Path(), exists=True, file_okay=False, readable=True, resolve_path=True
     ),
-    check_modules: List[Path] = typer.Option(
-        None,
-        "--checks-module",
-        "-m",
-        exists=True,
-        readable=True,
-        resolve_path=True,
-        help="Path to a Python module containing libcheck functions. Repeatable."
-        " If none are specified, default checks are used.",
-    ),
+    # check_modules: List[Path] = typer.Option(
+    #     None,
+    #     "--checks-module",
+    #     "-m",
+    #     exists=True,
+    #     readable=True,
+    #     resolve_path=True,
+    #     help="Path to a Python module containing libcheck functions. Repeatable."
+    #     " If not specified, default checks are used.",
+    # ),
 ):
-    checks: List[Check] = get_checks(check_modules)
+    # checks: List[Check] = get_checks(check_modules)
+    checks: List[Check] = get_checks()
 
     for file in walk(lib_root):
         tag: TinyTag
