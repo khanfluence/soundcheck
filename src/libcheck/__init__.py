@@ -5,6 +5,7 @@ import sys
 from dataclasses import dataclass
 from enum import Enum
 from importlib import import_module
+from importlib.metadata import version
 
 # from importlib.machinery import ModuleSpec
 from pathlib import Path
@@ -24,7 +25,12 @@ import typer
 from loguru import logger
 from tinytag import TinyTag
 from tinytag.tinytag import TinyTagException
+
+from libcheck.util import TyperExitError
+
 logger.remove()
+
+__version__ = version(__name__)
 
 DEFAULT_CHECKS_MODULE_NAME = "libcheck.default_checks"
 
@@ -127,6 +133,12 @@ def get_checks() -> List[Check]:
 main = typer.Typer(add_completion=False)
 
 
+def show_version(version: bool) -> bool:
+    if version:
+        raise TyperExitError(0, f"{__name__} {__version__}")
+    return version
+
+
 class LogLevel(str, Enum):
     TRACE = "trace"
     DEBUG = "debug"
@@ -167,6 +179,15 @@ def libcheck(
         dir_okay=False,
         writable=True,
         help="Log to this file instead of stderr.",
+    ),
+    _version: bool = typer.Option(
+        False,
+        "--version",
+        "-v",
+        is_eager=True,
+        callback=show_version,
+        help="Show the version and exit.",
+        show_default=False,
     ),
 ):
     if log_level:
