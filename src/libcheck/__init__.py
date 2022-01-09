@@ -2,6 +2,7 @@
 import inspect
 import os
 import sys
+from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass
 from enum import Enum
 from importlib import import_module
@@ -25,6 +26,7 @@ import typer
 from loguru import logger
 from tinytag import TinyTag
 from tinytag.tinytag import TinyTagException
+from tqdm import tqdm
 
 from libcheck.util import TyperExitError
 
@@ -130,6 +132,24 @@ def get_checks() -> List[Check]:
     return checks
 
 
+def check_file(file: os.PathLike, checks: Iterable[Check], lib_root: os.PathLike):
+    tag: TinyTag
+    try:
+        tag = TinyTag.get(file, image=True)
+    except TinyTagException as exc:
+        msg: str = exc.args[0]
+        if "no tag reader found to support filetype" in msg.lower():
+            logger.debug(f"Skipping unsupported file: {file}")
+        else:
+            logger.error(msg)
+        return
+
+    context = LibcheckContext(file=file, tag=tag, lib_root=lib_root)
+    for check in checks:
+        # print(check.func(context))
+        check.func(context)
+
+
 main = typer.Typer(add_completion=False)
 
 
@@ -196,19 +216,7 @@ def libcheck(
 
     # checks: List[Check] = get_checks(check_modules)
     checks: List[Check] = get_checks()
-
-    for file in walk(lib_root):
-        tag: TinyTag
-        try:
-            tag = TinyTag.get(file, image=True)
-        except TinyTagException as exc:
-            msg: str = exc.args[0]
-            if "no tag reader found to support filetype" in msg.lower():
-                logger.debug(f"Skipping unsupported file: {file}")
-            else:
-                logger.error(msg)
-            continue
-
-        context = LibcheckContext(file=file, tag=tag, lib_root=lib_root)
-        for check in checks:
-            print(check.func(context))
+    with ThreadPoolExecutor(max_workers=8) as executor:
+        for file in tqdm(walk(lib_root), bar_format="Checked {n} files"):
+            executor.submit(check_file, file, checks, lib_root)
+        # check_file(file, checks, lib_root)
