@@ -1,4 +1,4 @@
-# libcheck
+# soundcheck
 
 Validate properties of a music library.
 

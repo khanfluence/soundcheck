@@ -28,13 +28,13 @@ from tinytag import TinyTag
 from tinytag.tinytag import TinyTagException
 from tqdm import tqdm
 
-from libcheck.util import TyperExitError
+from soundcheck.util import TyperExitError
 
 logger.remove()
 
 __version__ = version(__name__)
 
-DEFAULT_CHECKS_MODULE_NAME = "libcheck.default_checks"
+DEFAULT_CHECKS_MODULE_NAME = "soundcheck.default_checks"
 
 
 def walk(path: os.PathLike) -> Iterator[os.DirEntry]:
@@ -46,17 +46,17 @@ def walk(path: os.PathLike) -> Iterator[os.DirEntry]:
         yield file
 
 
-def is_libcheck_function(member: object) -> bool:
+def is_soundcheck_function(member: object) -> bool:
     # TODO: validate function takes Context and returns bool?
     return (
         inspect.isfunction(member)
         and hasattr(member, "__name__")
-        and member.__name__.startswith("libcheck")
+        and member.__name__.startswith("check_")
     )
 
 
 @dataclass(init=False)
-class LibcheckContext:
+class SoundcheckContext:
     tag: TinyTag
     lib_root: Path
     rel_path: Path
@@ -71,7 +71,7 @@ class LibcheckContext:
 
 class Check(NamedTuple):
     name: str
-    func: Callable[[LibcheckContext], bool]
+    func: Callable[[SoundcheckContext], bool]
     # origin: str
 
 
@@ -89,7 +89,7 @@ def get_checks() -> List[Check]:
     #     # user-specified
     #     for i, path in enumerate(check_module_paths):
     #         spec: Optional[ModuleSpec] = importlib.util.spec_from_file_location(
-    #             f"libcheck_checks_module{i}", path
+    #             f"soundcheck_checks_module{i}", path
     #         )
     #         if spec is None:
     #             # TODO: log
@@ -111,7 +111,7 @@ def get_checks() -> List[Check]:
     checks: List[Check] = []
     for module in modules:
         # module_checks: List[Check] = []
-        for member in inspect.getmembers(module, is_libcheck_function):
+        for member in inspect.getmembers(module, is_soundcheck_function):
             # module_checks.append(Check(member[0], member[1]))
             checks.append(Check(member[0], member[1]))
 
@@ -127,7 +127,7 @@ def get_checks() -> List[Check]:
         #     module_name = module.__spec__.origin
         # module_name: str = DEFAULT_CHECKS_MODULE_NAME if module.__spec__.name else ""
         # logger.trace(
-        #     f"Found libcheck functions {check_names} in module {module.__spec__.origin}"
+        #     f"Found soundcheck functions {check_names} in module {module.__spec__.origin}"
         # )
     return checks
 
@@ -144,7 +144,7 @@ def check_file(file: os.PathLike, checks: Iterable[Check], lib_root: os.PathLike
             logger.error(msg)
         return
 
-    context = LibcheckContext(file=file, tag=tag, lib_root=lib_root)
+    context = SoundcheckContext(file=file, tag=tag, lib_root=lib_root)
     for check in checks:
         # print(check.func(context))
         check.func(context)
@@ -171,9 +171,15 @@ class LogLevel(str, Enum):
 # Pass context_settings to command instead of Typer
 # because of https://github.com/tiangolo/typer/issues/208
 @main.command(context_settings={"help_option_names": ["-h", "--help"]})
-def libcheck(
-    lib_root: Path = typer.Argument(
-        Path(), exists=True, file_okay=False, readable=True, resolve_path=True
+def soundcheck(
+    lib_root: Path = typer.Option(
+        Path(),
+        "--library",
+        "-l",
+        exists=True,
+        file_okay=False,
+        readable=True,
+        resolve_path=True,
     ),
     # check_modules: List[Path] = typer.Option(
     #     None,
@@ -182,20 +188,16 @@ def libcheck(
     #     exists=True,
     #     readable=True,
     #     resolve_path=True,
-    #     help="Path to a Python module containing libcheck functions. Repeatable."
+    #     help="Path to a Python module containing soundcheck functions. Repeatable."
     #     " If not specified, default checks are used.",
     # ),
     log_level: Optional[LogLevel] = typer.Option(
         None,
-        "--log-level",
-        "-l",
         case_sensitive=False,
         help="Log messages of at least this importance.",
     ),
     log_file: Optional[Path] = typer.Option(
         None,
-        "--log-file",
-        "-L",
         dir_okay=False,
         writable=True,
         help="Log to this file instead of stderr.",

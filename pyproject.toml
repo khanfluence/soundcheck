@@ -1,11 +1,11 @@
 [tool.poetry]
-name = "libcheck"
+name = "soundcheck"
 version = "0.1.0"
 description = "TODO"
 authors = ["khanfluence <khanfluence@gmail.com>"]
 
 [tool.poetry.scripts]
-libcheck = "libcheck:main"
+soundcheck = "soundcheck:main"
 
 [tool.poetry.dependencies]
 python = "^3.8"
