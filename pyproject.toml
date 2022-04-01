@@ -5,7 +5,7 @@ description = "TODO"
 authors = ["khanfluence <khanfluence@gmail.com>"]
 
 [tool.poetry.scripts]
-soundcheck = "soundcheck:main"
+soundcheck = "soundcheck.main:main"
 
 [tool.poetry.dependencies]
 python = "^3.8"
