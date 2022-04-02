@@ -1,31 +1,17 @@
 import functools
-import importlib.util
-import inspect
 import os
+import queue
 import sys
 from concurrent.futures import ThreadPoolExecutor
-from dataclasses import dataclass
 from enum import Enum
-from importlib.machinery import ModuleSpec
 from pathlib import Path
-from types import ModuleType
-from typing import (
-    Callable,
-    Iterable,
-    Iterator,
-    List,
-    NamedTuple,
-    Optional,
-    TextIO,
-    Union,
-)
+from typing import Iterator, List, Optional, TextIO, Union
 
 import typer
 from loguru import logger
-from tinytag import TinyTag
-from tinytag.tinytag import TinyTagException
 from tqdm import tqdm
 
+from soundcheck.check import Check, check_file, get_checks
 from soundcheck.version import __version__
 
 main = typer.Typer(add_completion=False)
@@ -80,6 +66,13 @@ def soundcheck(
         resolve_path=True,
         help="Path to a Python module containing soundcheck functions.",
     ),
+    fail_fast: bool = typer.Option(
+        False,
+        "--fail-fast/--allow-fail",
+        "-f/-F",
+        show_default=True,
+        help="Exit when a test fails.",
+    ),
     log_level: Optional[LogLevel] = typer.Option(
         None,
         case_sensitive=False,
@@ -106,9 +99,30 @@ def soundcheck(
         logger.add(sink, level=log_level.upper())
 
     checks: List[Check] = get_checks(checks_module)
+    result_queue: queue.Queue = queue.Queue()
     with ThreadPoolExecutor() as executor:
         for file in tqdm(walk(lib_root), bar_format="Checked {n} files"):
-            executor.submit(check_file, file, checks, lib_root)
+            executor.submit(check_file, file, checks, lib_root, result_queue)
+
+            # This probably trips fairly often, but I don't know a better way
+            try:
+                result = result_queue.get(block=False)
+            except queue.Empty:
+                continue
+            else:
+                process_result(result, fail_fast)
+
+    while not result_queue.empty():
+        result = result_queue.get()
+        process_result(result, fail_fast)
+
+
+def process_result(result, fail_fast: bool) -> None:
+    print(result)
+    if result["status"] == "fail":
+        # TODO: log?
+        if fail_fast:
+            raise TyperExitError(1, "TODO: failure")
 
 
 def walk(path: os.PathLike) -> Iterator[os.DirEntry]:
@@ -120,85 +134,19 @@ def walk(path: os.PathLike) -> Iterator[os.DirEntry]:
         yield file
 
 
-def is_soundcheck_function(member: object) -> bool:
-    # TODO: validate function takes Context and returns bool?
-    return (
-        inspect.isfunction(member)
-        and hasattr(member, "__name__")
-        and member.__name__.startswith("check_")
-    )
-
-
-@dataclass(init=False)
-class SoundcheckContext:
-    tag: TinyTag
-    file_path: Path
-    lib_root: Path
-
-    def __init__(self, file: os.PathLike, tag: TinyTag, lib_root: os.PathLike) -> None:
-        self.tag = tag
-        self.file_path = Path(file).resolve()
-        self.lib_root = Path(lib_root).resolve()
-
-
-class Check(NamedTuple):
-    name: str
-    function: Callable[[SoundcheckContext], bool]
-
-
-def get_checks(checks_module: Path) -> List[Check]:
-    spec: Optional[ModuleSpec] = importlib.util.spec_from_file_location(
-        "souncheck_checks_module", checks_module
-    )
-    if spec is None:
-        message = f"Not a Python module: {checks_module}"
-        logger.critical(message)
-        raise ValueError(message)
-    if spec.loader is None:
-        message = f"Spec has no loader for module: {checks_module}"
-        logger.critical(message)
-        raise ValueError(message)
-    module: ModuleType = importlib.util.module_from_spec(spec)
-    spec.loader.exec_module(module)
-
-    checks: List[Check] = []
-    for member in inspect.getmembers(module, is_soundcheck_function):
-        checks.append(Check(member[0], member[1]))
-        logger.trace(f"Found check function: {member[0]}")
-
-    if len(checks) == 0:
-        logger.warning("Found no check functions")
-
-    return checks
-
-
-def check_file(file: os.PathLike, checks: Iterable[Check], lib_root: os.PathLike):
-    tag: TinyTag
-    try:
-        tag = TinyTag.get(file, image=True)
-    except TinyTagException as exception:
-        message: str = exception.args[0]
-        if "no tag reader found to support filetype" in message.lower():
-            logger.debug(f"Skipping unsupported file: {file}")
-        else:
-            logger.error(message)
-        return
-
-    context = SoundcheckContext(file=file, tag=tag, lib_root=lib_root)
-    for check in checks:
-        check.function(context)
-
-
 class TyperExitError(typer.Exit):
     """An exception that indicates the application should exit with some status code
     and display a message."""
 
     def __init__(self, code: int, message: Optional[str] = None) -> None:
         self.message = message
+
         if message:
+            fmt_message = message
             if code:
-                typer.echo("Error: ", nl=False, err=True)
-            typer.echo(message, err=True)
+                fmt_message = "Error: " + fmt_message
+            typer.echo(fmt_message, err=True)
+
         super().__init__(code=code)
 
     def __str__(self) -> str:
